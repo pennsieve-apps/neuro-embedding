@@ -131,6 +131,10 @@ def choose_labels(s, wanted, A):
         pos = [j for j in cols if A.is_position(s.behavior_names[j], s.variables.get(s.behavior_names[j]))]
         if pos:
             cols = pos[:2]
+            if len(cols) == 2:   # x and y of a linear track: keep the long axis (it then gets the direction)
+                r = [float(np.nanpercentile(s.Y[:, j], 99) - np.nanpercentile(s.Y[:, j], 1)) for j in cols]
+                if max(r) > 5 * max(min(r), 1e-12):
+                    cols = [cols[int(np.argmax(r))]]
             names = [s.behavior_names[j] for j in cols]
         else:
             cols = cols[:3]
