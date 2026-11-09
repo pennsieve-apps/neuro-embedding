@@ -239,7 +239,7 @@ def trial_trajectories(sid: str, tj: dict, out: Path) -> Path:
     fig, axes = plt.subplots(1, 3, figsize=(11, 3.4))
     for k, c in enumerate(tj["conditions"][: len(SERIES)]):
         col = SERIES[k]
-        lab = f"{c} (n={tj['counts'][k]})"
+        lab = " / ".join(part.split("=", 1)[-1] for part in c.split(" / ")) + f" (n={tj['counts'][k]})"
         for d in range(min(2, traj.shape[2])):
             axes[d].plot(tt, traj[k, :, d], color=col, lw=2, label=lab)
         axes[2].plot(traj[k, :, 0], traj[k, :, 1], color=col, lw=2)
@@ -250,12 +250,14 @@ def trial_trajectories(sid: str, tj: dict, out: Path) -> Path:
         axes[d].axvline(0, color=MUTED, lw=0.8, ls=":")
         axes[d].set_xlabel(f"time from {tj['align']} (s)")
         axes[d].set_ylabel(f"PC {d + 1}")
-    axes[0].legend(frameon=False, fontsize=7)
+    h, l = axes[0].get_legend_handles_labels()
+    fig.legend(h, l, loc="lower center", ncol=min(4, len(l)), frameon=False, fontsize=8,
+               title=" / ".join(tj.get("factors", [])), title_fontsize=8)
     axes[2].set_xlabel("PC 1")
     axes[2].set_ylabel("PC 2")
     axes[2].set_title("dot: window start, triangle: alignment event", fontsize=8)
     fig.suptitle(f"{sid}: trial-averaged population trajectories", fontsize=11)
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0.14, 1, 1))
     fig.savefig(out, dpi=DPI)
     plt.close(fig)
     return out

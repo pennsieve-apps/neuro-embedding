@@ -62,8 +62,10 @@ decoding check of the first variable. With two or more sessions that share that 
    pupil); labels are z-scored. The first is the colour of the figures.
 3. **PCA / FA**: activity (square-rooted counts) smoothed with a Gaussian of SD `SMOOTH_S`, z-scored
    over the epoch. PCA: variance explained, PCs for 50/80/90 %, participation ratio. FA: 1 to
-   `N_COMPONENTS` factors, contiguous `CV_FOLDS`-fold held-out log-likelihood; the best number of
-   factors and the mean shared-variance fraction (communality / total variance).
+   `N_COMPONENTS` factors, contiguous `CV_FOLDS`-fold held-out log-likelihood (on at most 20,000
+   evenly spaced bins, leaving out neurons that are silent in one block); the best number of
+   factors and the mean shared-variance fraction (communality / total variance). A best number
+   equal to `N_COMPONENTS` means "at least that many".
 4. **Trial-averaged trajectories** (sessions with a trials table): the smoothed, z-scored activity
    in `TRIAL_WINDOW_S` around `TRIAL_ALIGN` averaged per condition (choice × stimulus side, from
    the trials table: IBL `mouse_wheel_choice` × `gabor_stimulus_side`, or `choice` ×
@@ -140,14 +142,62 @@ session that fails is logged and skipped; a failing GPFA is logged and the rest 
 
 ## Runtime
 
-RUNTIME_SECTION
+Measured on the demo data (neuro-align output in `data/work/{grosmark,ibl}/neuro-align/`) on an
+M-series Mac **shared with many other builds (load average 50-150 during these runs)**, so wall
+times are pessimistic. CEBRA with the cpu variant's settings (3000 iterations, batch 256) and one
+thread (under that load PyTorch was 7-9 times slower per iteration with several threads: 0.12 s
+with 1 thread, 0.9-1.1 s with 2-4 threads):
+
+| Session | Where | Wall time | Peak memory |
+|---|---|---|---|
+| Grosmark `sub-Buddy` (58 units, 93,117 bins of 25 ms, run epoch 8,523 bins) | Docker, cpu image, linux/amd64 emulation, `--cpus 2 --memory 4g` | 986 s (CEBRA, 3 × 3000 iterations: ~900 s) | 1,054 MB (cgroup `memory.peak`) |
+| Grosmark, same | native arm64 venv | 1,480 s | 0.95 GB RSS |
+| IBL `sub-NR-0031` (186 units, 80,064 bins, whole session) | native arm64 venv | 3,056 s (CEBRA 3 × 3000 iterations on 62,613-78,267 bins: 2,900 s) | 3.6 GB RSS |
+| Synthetic fixture (3 sessions, 200 iterations) | Docker, cpu image, emulation | 3,202 s under the heaviest load | 841 MB |
+
+PCA and FA take seconds (IBL: 5 s and 27 s), the trial-averaged trajectories under a second; the
+time is CEBRA's (three models per session), which grows with iterations, not with session length.
+GPFA (optional) took 4-50 s on 51-80 neurons × 66-140 trials with 20-100 EM iterations, but grows
+steeply with neurons. **GPU numbers (the gpu variant's 10000 iterations, batch 512) are to be
+measured on the dev compute node.** The gpu image was checked to start and fall back to CPU without
+a GPU (`USE_GPU=auto: cuda not available, using cpu`), and the images ran as an arbitrary user on a
+read-only root file system with only `/tmp` writable (the Lambda recipe of the builder brief).
+
+## Demo results
+
+On neuro-align's output of the demo data (`data/work/<demo>/neuro-embedding/`), cpu-variant
+settings (CEBRA 3000 iterations, batch 256):
+
+- **Grosmark & Buzsáki, rat Buddy, linear track** (58 CA1 units, run epoch 8,523 bins of 25 ms;
+  CEBRA-Behavior labels: 1-D position + running direction). CEBRA-Behavior goodness of fit on the
+  held-out 20 % of the run: **0.62 bits**, vs **-0.17 bits** for the shuffled-label control and 0.37
+  bits for CEBRA-Time; kNN decoding of position from the 3-D embedding on the held-out bins: R²
+  **0.48** (CEBRA-Behavior), 0.54 (CEBRA-Time), -0.22 (shuffled control), -0.22 (top 3 PCs). The
+  activity is high-dimensional to linear methods (3 PCs: 16 % of the variance; 80 % needs 37 PCs;
+  participation ratio 37; FA's held-out likelihood still rises at 10 factors), while a 3-D
+  nonlinear embedding carries position. With the cpu variant's 3000 iterations the embedding is a
+  partly closed ring rather than the paper's clean figure; the gpu variant's 10000 iterations are
+  the setting to show.
+- **IBL `sub-NR-0031`** (186 units in 13 regions, 80,064 bins; labels: wheel velocity, pupil,
+  licks). CEBRA-Behavior goodness of fit 0.15 bits vs -0.02 bits shuffled; kNN wheel-velocity R² on
+  held-out bins is negative for every embedding (CEBRA-Behavior -0.17, shuffled -0.35, CEBRA-Time
+  -0.24, PCA -0.43): on this session the wheel is not captured by a 3-D embedding, in line with
+  BrainWideBench (Andre et al. 2026). The trial-averaged trajectories (400 trials, choice ×
+  stimulus side, aligned to the stimulus onset) share a stimulus-evoked excursion peaking about
+  0.25 s after onset; the rare error trials with a right stimulus (n = 15) take a visibly different,
+  smaller path; 3 PCs hold 73 % of the variance of the condition averages. 3 PCs explain 49 % of the single-bin variance, 80 % needs 39
+  PCs.
+- **Synthetic fixture**: CEBRA-Behavior beats the shuffled control on both planted track sessions
+  (goodness of fit ≥ 0.2 bits higher, kNN R² of position ≥ 0.3 higher), the two rats' embeddings
+  are consistent (R² > 0.5; 0.93 with 200 iterations in Docker), the IBL-like session's GPFA and
+  trial-averaged trajectories split by choice (tests in `tests/`).
 
 ## Variants
 
 | Variant | Image | Compute | Defaults | Pick it when |
 |---|---|---|---|---|
-| `gpu` (default, "GPU") | CUDA 12.6 PyTorch 2.14.1 (NVIDIA libraries as wheels; driver 550, T4 or newer) | `gpu`, 4 vCPU / 16 GiB | `CEBRA_ITERS=10000`, `CEBRA_BATCH=512` (the CEBRA paper's rat hippocampus setting) | A GPU is available. |
-| `cpu` ("CPU") | CPU-only PyTorch 2.14.1+cpu, no NVIDIA libraries | `standard`, 4 vCPU / 8 GiB | `CEBRA_ITERS=3000`, `CEBRA_BATCH=256` | No GPU; shapes are similar, losses a little higher. |
+| `gpu` (default, "GPU") | CUDA 12.6 PyTorch 2.14.1 (NVIDIA libraries as wheels; driver 550, T4 or newer): 3.9 GB compressed, 11.1 GB unpacked | `gpu`, 4 vCPU / 8 GiB | `CEBRA_ITERS=10000`, `CEBRA_BATCH=512` (the CEBRA paper's rat hippocampus setting) | A GPU is available. |
+| `cpu` ("CPU") | CPU-only PyTorch 2.14.1+cpu, no NVIDIA libraries: 0.42 GB compressed, 1.9 GB unpacked | `standard`, 4 vCPU / 6 GiB | `CEBRA_ITERS=3000`, `CEBRA_BATCH=256` | No GPU; shapes are similar, losses a little higher. |
 
 The gpu image falls back to CPU when no GPU is visible (`USE_GPU=auto: cuda not available, using
 cpu`), checked here. CEBRA's VRAM use is small (a 4-layer 1-D convolutional network with 32 hidden
