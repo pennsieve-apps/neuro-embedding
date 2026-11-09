@@ -24,15 +24,18 @@ has neurons: when a rat runs along a track, the activity of a hundred place cell
 ring or a line in a space of a few dimensions. This app finds that low-dimensional structure in
 each session and shows it in 3-D, coloured by what the animal was doing. It answers: how many
 dimensions does the activity use (PCA, factor analysis)? How does the population state evolve
-trial by trial (GPFA)? Is there a smooth map from behaviour to population activity, and is it the
+around a task event, for each choice and stimulus side (trial-averaged PCA trajectories; optionally
+single trials with GPFA)? Is there a smooth map from behaviour to population activity, and is it the
 same in different animals (CEBRA)? The headline figure is CEBRA's: the activity of each time bin
 as a point in 3-D, coloured by position; a clean ring or line that the shuffled-label control does
 not show means the population encodes position.
 
 **For a computational analyst.** Per session: PCA and factor analysis (FA dimensionality by
 blocked cross-validated log-likelihood) of Gaussian-smoothed, square-rooted, z-scored activity;
-elephant's GPFA on at most `GPFA_MAX_NEURONS` neurons, on trials when the session has a trials
-table, else on fixed-length segments of the epoch; CEBRA (`offset10-model`, cosine distance,
+for trial-based sessions, PCA of the trial-averaged activity per choice × stimulus side; optionally
+(`METHODS=...,gpfa`; off by default because it is slow on hundreds of units) elephant's GPFA on at
+most `GPFA_MAX_NEURONS` neurons, on trials when the session has a trials table, else on
+fixed-length segments of the epoch; CEBRA (`offset10-model`, cosine distance,
 InfoNCE, 3-D output) trained three ways: CEBRA-Time (`conditional="time"`, no labels),
 CEBRA-Behavior (`conditional="time_delta"` with the behaviour variables, trained on the first
 `TRAIN_FRACTION` of the epoch's bins), and CEBRA-Behavior with shuffled labels (the control). The
@@ -61,21 +64,25 @@ decoding check of the first variable. With two or more sessions that share that 
    over the epoch. PCA: variance explained, PCs for 50/80/90 %, participation ratio. FA: 1 to
    `N_COMPONENTS` factors, contiguous `CV_FOLDS`-fold held-out log-likelihood; the best number of
    factors and the mean shared-variance fraction (communality / total variance).
-4. **GPFA** (spiking data only): up to `GPFA_MAX_SEGMENTS` trials (window `TRIAL_WINDOW_S` around
+4. **Trial-averaged trajectories** (sessions with a trials table): the smoothed, z-scored activity
+   in `TRIAL_WINDOW_S` around `TRIAL_ALIGN` averaged per condition (choice × stimulus side, from
+   the trials table: IBL `mouse_wheel_choice` × `gabor_stimulus_side`, or `choice` ×
+   `stimulus_side`), conditions with at least 3 trials; PCA of the condition averages, top 3 PCs.
+5. **GPFA** (optional, `METHODS` must list `gpfa`; spiking data only): up to `GPFA_MAX_SEGMENTS` trials (window `TRIAL_WINDOW_S` around
    `TRIAL_ALIGN`, by default the stimulus onset) or `GPFA_SEGMENT_S`-long chunks of the epoch, the
    `GPFA_MAX_NEURONS` most active neurons that fire in at least 10 % of the segments,
    `GPFA_DIMS` latents, `GPFA_ITERS` EM iterations, bins of `GPFA_BIN_S`; orthonormalised latent
    trajectories, the learned timescales; the figure averages them by choice (or stimulus side).
-5. **CEBRA**: as above; `CEBRA_ITERS` iterations, batch `CEBRA_BATCH`, learning rate `CEBRA_LR`,
+6. **CEBRA**: as above; `CEBRA_ITERS` iterations, batch `CEBRA_BATCH`, learning rate `CEBRA_LR`,
    temperature `CEBRA_TEMPERATURE`, seeded. Spike counts are the input as in the paper; calcium
    traces are z-scored.
-6. **Consistency** between sessions sharing the colour variable: CEBRA-Behavior and CEBRA-Time.
+7. **Consistency** between sessions sharing the colour variable: CEBRA-Behavior and CEBRA-Time.
 
 ## Parameters
 
 | Name | Default | What it does |
 |---|---|---|
-| `METHODS` | `pca,fa,gpfa,cebra` | Which methods run. |
+| `METHODS` | `pca,fa,cebra` | Which methods run (`pca` includes the trial-averaged trajectories; add `gpfa` for GPFA). |
 | `BEHAVIOR_VARS` | `auto` | CEBRA-Behavior labels and figure colour (see Method 2), or a comma-separated list of neuro-align variable names. |
 | `BIN_SIZE_S` | `0` | Re-bin neuro-align's bins (s); 0 keeps them (25 ms for units). |
 | `SMOOTH_S` | `0.05` | Gaussian SD (s) before PCA / FA. |
@@ -112,14 +119,18 @@ session that fails is logged and skipped; a failing GPFA is logged and the rest 
   `pca` (bins × `N_COMPONENTS`), `pca_explained_variance_ratio`, `fa` (bins × factors),
   `cebra_time`, `cebra_behavior`, `cebra_behavior_train_mask` (bins CEBRA-Behavior was trained on),
   `cebra_shuffled` (bins × 3 each), `labels`, `label_names`, `behavior`, `behavior_names`, `gpfa`
-  (segments × latents × time), `gpfa_segments` (start, stop in s), `gpfa_neuron_ids`. No pickles.
+  (segments × latents × time), `gpfa_segments` (start, stop in s), `gpfa_neuron_ids`,
+  `pca_trial_trajectories` (conditions × time × 3), `pca_trial_time`, `pca_trial_conditions`,
+  `pca_trial_counts`. No pickles.
 - `<session_id>/<session_id>_embedding_3d.png`: PCA, CEBRA-Time, CEBRA-Behavior and the shuffled
   control in 3-D, coloured by the first behaviour variable (blue / orange for the two running
   directions of a linear track); `<session_id>_embedding_3d.html`: the same, interactive (plotly,
   with plotly.js embedded: opens offline).
-- `<session_id>/<session_id>_explained_variance.png`, `_cebra_loss.png`, `_gpfa.png`, `summary.json`.
+- `<session_id>/<session_id>_explained_variance.png`, `_cebra_loss.png`, `_pca_trials.png` (trial
+  sessions), `_gpfa.png` (with GPFA), `summary.json`.
 - `embedding.csv`: `session_id, subject_id, condition, group, method, metric, value` (long format:
-  `pca` var_explained_3pc, n_pc_50/80/90, participation_ratio; `fa` n_factors_cv,
+  `pca` var_explained_3pc, n_pc_50/80/90, participation_ratio; `pca_trials` var_explained_3pc;
+  `fa` n_factors_cv,
   shared_variance_fraction; `gpfa` n_neurons, n_segments, final_loglik; `cebra_*`
   train_loss_final, goodness_of_fit_bits, `knn_r2_<variable>_test`).
 - `consistency.csv` (`variable, embedding, source, target, consistency_r2`) and `consistency.png`,
@@ -154,7 +165,11 @@ for many sessions, raising `CEBRA_BATCH` to 1024 or 2048 improves the loss estim
 - Consistency needs sessions with the same colour variable in the same units; it compares
   geometry, not neuron identities.
 - GPFA assumes spike counts (it is skipped for calcium data) and is slow above ~200 neurons,
-  hence the cap; its latents are only comparable within a session.
+  hence off by default and capped; its latents are only comparable within a session.
+- On IBL data CEBRA embeddings decode the wheel about as well as a linear decoder and the choice
+  near chance ([Andre et al. 2026, BrainWideBench](https://doi.org/10.48550/arXiv.2609.22064)): CEBRA is this app's showpiece
+  for hippocampal position and cross-session consistency, not a better decoder; neuro-decoding
+  reports kNN on CEBRA only as a comparison.
 - The CPU variant trains fewer iterations; check the loss curve before comparing numbers between
   the variants.
 
@@ -183,6 +198,8 @@ author lists in `CITATION.cff`.
   *Frontiers in Neuroinformatics* 8:10 (2014). doi:[10.3389/fninf.2014.00010](https://doi.org/10.3389/fninf.2014.00010), PMID: 24600386.
 - Paszke A et al. PyTorch: An Imperative Style, High-Performance Deep Learning Library (2019).
   doi:[10.48550/arXiv.1912.01703](https://doi.org/10.48550/arXiv.1912.01703).
+- Andre A, Mahato SP, Arora V, et al. BrainWideBench: Benchmarking large-scale pretraining and
+  across-animal transfer in multi-region neural recordings. arXiv (2026). doi:[10.48550/arXiv.2609.22064](https://doi.org/10.48550/arXiv.2609.22064).
 - scikit-learn (Pedregosa et al., *JMLR* 12:2825–2830, 2011; no DOI): https://scikit-learn.org.
   plotly.py: https://github.com/plotly/plotly.py.
 - Demo data: Grosmark AD, Buzsáki G. Diversity in neural firing dynamics supports both rigid and

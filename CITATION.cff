@@ -69,6 +69,99 @@ references:
   - type: other
     value: '19357332'
     description: PubMed ID
+- type: article
+  title: 'BrainWideBench: Benchmarking large-scale pretraining and across-animal transfer in multi-region neural
+    recordings'
+  authors:
+  - family-names: Andre
+    given-names: Alexandre
+  - family-names: Mahato
+    given-names: Shivashriganesh P.
+  - family-names: Arora
+    given-names: Vinam
+  - family-names: Balaji
+    given-names: Keshav
+  - family-names: Lachi
+    given-names: Divyansha
+  - family-names: Krishna
+    given-names: Nanda H.
+  - family-names: Xiao
+    given-names: Jingyun
+  - family-names: Zhang
+    given-names: Yizi
+  - family-names: Mao
+    given-names: Ximeng
+  - family-names: Ma
+    given-names: Wenrui
+  - family-names: Yu
+    given-names: Han
+  - family-names: Laboratory
+    given-names: International Brain
+  - family-names: Birman
+    given-names: Daniel
+  - family-names: Bonacchi
+    given-names: Niccolò
+  - family-names: Chapuis
+    given-names: Gaelle A.
+  - family-names: Catarino
+    given-names: Joana A.
+  - family-names: Davatolhagh
+    given-names: Felicia
+  - family-names: Faulkner
+    given-names: Mayo
+  - family-names: Freitas-Silva
+    given-names: Laura
+  - family-names: Hu
+    given-names: Fei
+  - family-names: Huntenburg
+    given-names: Julia M.
+  - family-names: Khanal
+    given-names: Anup
+  - family-names: Laranjeira
+    given-names: Inês
+  - family-names: Lau
+    given-names: Petrina
+  - family-names: Meijer
+    given-names: Guido T.
+  - family-names: Miska
+    given-names: Nathaniel J.
+  - family-names: Noel
+    given-names: Jean-Paul
+  - family-names: Pan-Vazquez
+    given-names: Alejandro
+  - family-names: Raiser
+    given-names: Georg
+  - family-names: Rossant
+    given-names: Cyrille
+  - family-names: Socha
+    given-names: Karolina Z.
+  - family-names: Urai
+    given-names: Anne E.
+  - family-names: Wells
+    given-names: Miles J.
+  - family-names: West
+    given-names: Steven J.
+  - family-names: Winter
+    given-names: Olivier
+  - family-names: Richards
+    given-names: Blake
+  - family-names: Lajoie
+    given-names: Guillaume
+  - family-names: Hurwitz
+    given-names: Cole
+  - family-names: Azabou
+    given-names: Mehdi
+  - family-names: Whiteway
+    given-names: Matthew R.
+  - family-names: Paninski
+    given-names: Liam
+  - family-names: Dyer
+    given-names: Eva L.
+  year: 2026
+  doi: 10.48550/arxiv.2609.22064
+  publisher:
+    name: arXiv
+  version: '1'
 - type: software
   title: Elephant 1.2.1
   authors:

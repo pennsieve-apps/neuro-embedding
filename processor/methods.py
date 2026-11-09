@@ -54,6 +54,9 @@ def pca(Z: np.ndarray, mask: np.ndarray, n_keep: int, seed: int) -> dict:
                         "n_components_fitted": n_comp}}
 
 
+FA_MAX_BINS = 20000
+
+
 def factor_analysis(Z: np.ndarray, mask: np.ndarray, max_k: int, folds: int, seed: int) -> dict:
     """Factor analysis: blocked (contiguous) cross-validated log-likelihood per number of factors
     picks the dimensionality; the best model gives shared-variance fraction and factor scores."""
@@ -61,6 +64,8 @@ def factor_analysis(Z: np.ndarray, mask: np.ndarray, max_k: int, folds: int, see
     from sklearn.model_selection import KFold
 
     D = Z[mask]
+    if D.shape[0] > FA_MAX_BINS:   # FA's cost grows with bins x neurons^2: every k-th bin is plenty
+        D = D[:: int(np.ceil(D.shape[0] / FA_MAX_BINS))]
     cands = [k for k in (1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30) if k <= min(max_k, D.shape[1] - 1)]
     if not cands:
         cands = [1]

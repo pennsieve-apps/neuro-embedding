@@ -13,7 +13,7 @@ from processor import main as M
 from tests import make_fixture
 
 FAST = {"METHODS": "pca,fa,gpfa,cebra", "CEBRA_ITERS": 250, "CEBRA_BATCH": 128, "GPFA_ITERS": 10, "GPFA_MAX_SEGMENTS": 60, "USE_GPU": "false",
-        "THREADS": 2, "MAX_PLOT_POINTS": 3000}
+        "THREADS": 1, "MAX_PLOT_POINTS": 3000}
 RAT = "sub-rat1_ses-track1"
 IBL = "sub-mouse1_ses-ibl1"
 
