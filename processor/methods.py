@@ -70,6 +70,13 @@ def factor_analysis(Z: np.ndarray, mask: np.ndarray, max_k: int, folds: int, see
     if not cands:
         cands = [1]
     kf = KFold(n_splits=max(2, folds), shuffle=False)
+    # neurons (nearly) silent in one block (drift, units lost or found mid-session) make FA's noise
+    # variance collapse and the held-out likelihood explode: keep neurons that vary in every block
+    stds = np.array([D[te].std(axis=0) for _, te in kf.split(D)])
+    keep = stds.min(axis=0) >= 0.05
+    if keep.sum() >= 3:
+        D = D[:, keep]
+    cands = [k for k in cands if k <= D.shape[1] - 1] or [1]
     ll = []
     for k in cands:
         s = []
@@ -79,13 +86,14 @@ def factor_analysis(Z: np.ndarray, mask: np.ndarray, max_k: int, folds: int, see
         ll.append(float(np.mean(s)))
     best = cands[int(np.argmax(ll))]
     fa = FactorAnalysis(n_components=best, random_state=seed, max_iter=1000).fit(D)
+    Zk = Z[:, keep] if keep.sum() >= 3 else Z
     comm = (fa.components_ ** 2).sum(axis=0)
     shared = comm / (comm + fa.noise_variance_)
     k3 = max(best, 3) if D.shape[1] > 3 else best
     fa3 = fa if k3 == best else FactorAnalysis(n_components=k3, random_state=seed, max_iter=1000).fit(D)
-    return {"scores": fa3.transform(Z).astype(np.float32), "candidates": cands, "cv_loglik": ll,
+    return {"scores": fa3.transform(Zk).astype(np.float32), "candidates": cands, "cv_loglik": ll,
             "metrics": {"n_factors_cv": best, "shared_variance_fraction": float(np.mean(shared)),
-                        "cv_loglik_best": float(max(ll))}}
+                        "cv_loglik_best": float(max(ll)), "n_neurons_used": int(D.shape[1])}}
 
 
 # --- GPFA --------------------------------------------------------------------------------------
