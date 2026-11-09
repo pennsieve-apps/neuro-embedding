@@ -213,8 +213,10 @@ variants:
   - id: cpu
     name: CPU
     description: >-
-      CPU-only PyTorch on a standard task; CEBRA with 3000 iterations and batch size 256 (about 15
-      minutes per session on 4 vCPU), which gives the same embedding shape with a somewhat higher loss.
+      CPU-only PyTorch on a standard task; CEBRA with 3000 iterations and batch size 256 (measured
+      about 16 minutes on the Grosmark demo session and about 50 minutes on a full IBL session),
+      with a higher loss and a less clean embedding than the gpu variant's 10000 iterations (on the
+      Grosmark demo, a partly closed ring).
     build:
       args:
         TORCH_FLAVOUR: cpu

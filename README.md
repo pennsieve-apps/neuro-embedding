@@ -150,7 +150,7 @@ with 1 thread, 0.9-1.1 s with 2-4 threads):
 
 | Session | Where | Wall time | Peak memory |
 |---|---|---|---|
-| Grosmark `sub-Buddy` (58 units, 93,117 bins of 25 ms, run epoch 8,523 bins) | Docker, cpu image, linux/amd64 emulation, `--cpus 2 --memory 4g` | 986 s (CEBRA, 3 × 3000 iterations: ~900 s) | 1,054 MB (cgroup `memory.peak`) |
+| Grosmark `sub-Buddy` (58 units, 93,117 bins of 25 ms, run epoch 10,654 bins) | Docker, cpu image, linux/amd64 emulation, `--cpus 2 --memory 4g` | 986 s (CEBRA, 3 × 3000 iterations: ~900 s) | 1,054 MB (cgroup `memory.peak`) |
 | Grosmark, same | native arm64 venv | 1,480 s | 0.95 GB RSS |
 | IBL `sub-NR-0031` (186 units, 80,064 bins, whole session) | native arm64 venv | 3,056 s (CEBRA 3 × 3000 iterations on 62,613-78,267 bins: 2,900 s) | 3.6 GB RSS |
 | Synthetic fixture (3 sessions, 200 iterations) | Docker, cpu image, emulation | 3,202 s under the heaviest load | 841 MB |
@@ -168,7 +168,7 @@ read-only root file system with only `/tmp` writable (the Lambda recipe of the b
 On neuro-align's output of the demo data (`data/work/<demo>/neuro-embedding/`), cpu-variant
 settings (CEBRA 3000 iterations, batch 256):
 
-- **Grosmark & Buzsáki, rat Buddy, linear track** (58 CA1 units, run epoch 8,523 bins of 25 ms;
+- **Grosmark & Buzsáki, rat Buddy, linear track** (58 CA1 units, run epoch 10,654 bins of 25 ms, the first 8,523 used to train CEBRA-Behavior;
   CEBRA-Behavior labels: 1-D position + running direction). CEBRA-Behavior goodness of fit on the
   held-out 20 % of the run: **0.62 bits**, vs **-0.17 bits** for the shuffled-label control and 0.37
   bits for CEBRA-Time; kNN decoding of position from the 3-D embedding on the held-out bins: R²
@@ -197,7 +197,7 @@ settings (CEBRA 3000 iterations, batch 256):
 | Variant | Image | Compute | Defaults | Pick it when |
 |---|---|---|---|---|
 | `gpu` (default, "GPU") | CUDA 12.6 PyTorch 2.14.1 (NVIDIA libraries as wheels; driver 550, T4 or newer): 3.9 GB compressed, 11.1 GB unpacked | `gpu`, 4 vCPU / 8 GiB | `CEBRA_ITERS=10000`, `CEBRA_BATCH=512` (the CEBRA paper's rat hippocampus setting) | A GPU is available. |
-| `cpu` ("CPU") | CPU-only PyTorch 2.14.1+cpu, no NVIDIA libraries: 0.42 GB compressed, 1.9 GB unpacked | `standard`, 4 vCPU / 6 GiB | `CEBRA_ITERS=3000`, `CEBRA_BATCH=256` | No GPU; shapes are similar, losses a little higher. |
+| `cpu` ("CPU") | CPU-only PyTorch 2.14.1+cpu, no NVIDIA libraries: 0.42 GB compressed, 1.9 GB unpacked | `standard`, 4 vCPU / 6 GiB | `CEBRA_ITERS=3000`, `CEBRA_BATCH=256` | No GPU; higher losses, and on Grosmark a partly closed ring instead of the paper's clean one (see Demo results). |
 
 The gpu image falls back to CPU when no GPU is visible (`USE_GPU=auto: cuda not available, using
 cpu`), checked here. CEBRA's VRAM use is small (a 4-layer 1-D convolutional network with 32 hidden
