@@ -30,7 +30,7 @@ log = setup_logging("neuro-embedding")
 APP = "neuro-embedding"
 METHODS = ("pca", "fa", "gpfa", "cebra")
 DEFAULTS = {
-    "METHODS": "pca,fa,gpfa,cebra",
+    "METHODS": "pca,fa,cebra",
     "BEHAVIOR_VARS": "auto",
     "BIN_SIZE_S": "0",
     "SMOOTH_S": "0.05",
@@ -129,6 +129,10 @@ def choose_labels(s, wanted, A):
     names = [s.behavior_names[j] for j in cols]
     if wanted == "auto":
         pos = [j for j in cols if A.is_position(s.behavior_names[j], s.variables.get(s.behavior_names[j]))]
+        one_d = [j for j in pos if str(s.variables.get(s.behavior_names[j], {}).get("kind", "")).lower()
+                 in ("position", "linear_position")]
+        if one_d:   # a linearised 1-D position (linear track) wins over its x / y
+            pos = one_d[:1]
         if pos:
             cols = pos[:2]
             if len(cols) == 2:   # x and y of a linear track: keep the long axis (it then gets the direction)
@@ -218,6 +222,24 @@ def run_session(s, p, cfg, out_dir: Path, A, M, F, hb) -> dict:
                                     f"held-out log-likelihood per number of factors (blocked cross-validation); "
                                     f"its peak ({fa['metrics']['n_factors_cv']} factors) estimates how many shared "
                                     f"dimensions the population uses. Few dimensions = strongly coordinated activity."})
+    # PCA trajectories averaged by trial condition (choice x stimulus side), for trial-based sessions
+    if "pca" in p["METHODS"]:
+        try:
+            tj = trial_trajectories(s, Z, p, A)
+            if tj:
+                arrays.update(pca_trial_trajectories=tj["traj"], pca_trial_time=tj["time"],
+                              pca_trial_conditions=np.array(tj["conditions"]), pca_trial_counts=np.array(tj["counts"]))
+                res["pca_trials"] = {"conditions": tj["conditions"], "counts": tj["counts"], "align": tj["align"],
+                                     "variance_explained_3pc": tj["evr3"]}
+                add("pca_trials", "var_explained_3pc", tj["evr3"])
+                figs.append({"path": F.trial_trajectories(sid, tj, sid_dir / f"{sid}_pca_trials.png"),
+                             "caption": f"{sid}: population trajectories averaged by trial condition "
+                                        f"({' x '.join(tj['factors'])}), aligned to {tj['align']}, in the space of the "
+                                        f"top principal components of the condition averages ({tj['evr3'] * 100:.0f}% of "
+                                        "their variance in 3 PCs). Trajectories that split apart after the event show "
+                                        "when the population starts to carry the stimulus or the choice."})
+        except Exception as exc:
+            log.warning("%s: trial-averaged PCA trajectories failed: %s", sid, exc)
     del Z
 
     # GPFA (spiking data)
@@ -361,6 +383,50 @@ def embedding_caption(sid, lab, res, has_dir) -> str:
             f"the variable.{nums}")
 
 
+def trial_trajectories(s, Z, p, A):
+    """Condition-averaged (choice x stimulus side) activity around TRIAL_ALIGN, projected on the PCA of
+    the condition averages (the classic trial-averaged population trajectory)."""
+    import numpy as np
+    from sklearn.decomposition import PCA
+
+    trials = A.trial_table(A.read_events(s))
+    if trials is None or len(trials) < 10:
+        return None
+    tv = A.trial_variables(trials)
+    factors = [n for n in tv if "choice" in n.lower()][:1] + [n for n in tv if "side" in n.lower()][:1]
+    if not factors:
+        return None
+    col = A.align_column(trials, p["TRIAL_ALIGN"])
+    al = trials[col].to_numpy(float)
+    w0, w1 = p["TRIAL_WINDOW_S"]
+    k0, k1 = int(np.floor(w0 / s.bin_size)), int(np.ceil(w1 / s.bin_size))
+    offs = np.arange(k0, k1)
+    labels = [" / ".join(f"{f}={tv[f][i]}" for f in factors) if all(tv[f][i] is not None for f in factors) else None
+              for i in range(len(trials))]
+    conds = sorted({c for c in labels if c is not None})
+    means, counts, keep = [], [], []
+    for c in conds:
+        idx = [i for i, l in enumerate(labels) if l == c and np.isfinite(al[i])]
+        segs = []
+        for i in idx:
+            b = int(np.searchsorted(s.t, al[i]))
+            rows = b + offs
+            if rows[0] >= 0 and rows[-1] < len(s.t):
+                segs.append(Z[rows])
+        if len(segs) >= 3:
+            means.append(np.mean(segs, axis=0))
+            counts.append(len(segs))
+            keep.append(c)
+    if len(keep) < 2:
+        return None
+    M = np.stack(means)                     # conditions x time x neurons
+    flat = M.reshape(-1, M.shape[2])
+    pca = PCA(n_components=min(3, flat.shape[1], flat.shape[0] - 1)).fit(flat)
+    traj = pca.transform(flat).reshape(M.shape[0], M.shape[1], -1).astype(np.float32)
+    return {"traj": traj, "time": (offs + 0.5) * s.bin_size, "conditions": keep, "counts": counts, "align": col,
+            "factors": factors, "evr3": float(pca.explained_variance_ratio_.sum())}
+
+
 def run_gpfa(s, p, A, M):
     import numpy as np
 
@@ -436,8 +502,9 @@ def main() -> int:
     if not input_dir.is_dir():
         log.error("INPUT_DIR %s is not a folder", input_dir)
         return 1
-    for k, v in (("MPLCONFIGDIR", "/tmp/matplotlib"), ("NUMBA_CACHE_DIR", "/tmp/numba")):
-        os.environ.setdefault(k, v)
+    import tempfile
+
+    os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "mpl"))
     from processor.resources import choose_device, resolve_threads, set_thread_env
 
     threads, thread_src = resolve_threads(p["THREADS"])

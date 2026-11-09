@@ -12,7 +12,7 @@ from processor import aligned as A
 from processor import main as M
 from tests import make_fixture
 
-FAST = {"CEBRA_ITERS": 250, "CEBRA_BATCH": 128, "GPFA_ITERS": 10, "GPFA_MAX_SEGMENTS": 60, "USE_GPU": "false",
+FAST = {"METHODS": "pca,fa,gpfa,cebra", "CEBRA_ITERS": 250, "CEBRA_BATCH": 128, "GPFA_ITERS": 10, "GPFA_MAX_SEGMENTS": 60, "USE_GPU": "false",
         "THREADS": 2, "MAX_PLOT_POINTS": 3000}
 RAT = "sub-rat1_ses-track1"
 IBL = "sub-mouse1_ses-ibl1"
@@ -90,6 +90,8 @@ def test_planted_structure(default_run):
 def test_ibl_gpfa_on_trials(default_run):
     s = json.loads((default_run / IBL / "summary.json").read_text())
     assert s["gpfa"]["segments"] == "trials"
+    assert len(s["pca_trials"]["conditions"]) == 4   # choice x stimulus side
+    assert (default_run / IBL / f"{IBL}_pca_trials.png").is_file()
     assert s["behavior_variables"] == ["wheel_velocity"]
 
 

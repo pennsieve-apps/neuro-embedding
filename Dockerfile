@@ -23,19 +23,20 @@ COPY VERSION /processor/VERSION
 
 ENV PYTHONPATH="/processor" \
     PYTHONUNBUFFERED=1 \
-    HOME=/tmp \
     MPLBACKEND=Agg \
-    MPLCONFIGDIR=/tmp/matplotlib \
-    XDG_CACHE_HOME=/tmp/cache \
-    TORCH_HOME=/tmp/torch \
+    USER=app \
+    LOGNAME=app \
     TORCH_FLAVOUR=${TORCH_FLAVOUR}
 
-# Build matplotlib's font cache and import the stack once, so a run needs no writes outside /tmp and no network.
-RUN python -W ignore -c "import matplotlib.pyplot, cebra, elephant.gpfa, plotly.graph_objects, sklearn, pyarrow, processor.main" \
-    && mkdir -p /tmp/matplotlib /tmp/cache /tmp/torch && chmod -R a+rwX /tmp/matplotlib /tmp/cache /tmp/torch
+# Import the stack once at build time (fails the build on a broken install). Nothing is baked into /tmp or
+# HOME: on Lambda only INPUT_DIR, OUTPUT_DIR, HOME and TMPDIR are writable and /tmp starts empty, so
+# processor/entry.py points matplotlib, numba, torch and XDG caches below $TMPDIR at start-up. No model
+# weights are needed (every model is fitted on the user's data).
+RUN MPLCONFIGDIR=/dev/shm/mpl python -W ignore -c "import matplotlib.pyplot, sklearn, pyarrow, processor.main, cebra, elephant.gpfa, plotly.graph_objects"
 
-# Runs as uid 1000 on the platform; PyTorch looks the user up (getpass), so uid 1000 gets a passwd entry.
-RUN useradd --uid 1000 --no-create-home --home-dir /tmp --shell /usr/sbin/nologin processor
+# Runs as uid 1000 on ECS and as an arbitrary least-privileged user on Lambda; nothing depends on the uid
+# (getpass finds USER in the environment).
+RUN useradd --uid 1000 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin app
 USER 1000
 
 ENTRYPOINT ["python3", "-m", "processor.entry"]

@@ -41,7 +41,7 @@ references:
   doi: 10.1038/s41586-023-06031-6
   identifiers:
   - type: other
-    value: PMID:37138088
+    value: '37138088'
     description: PubMed ID
 - type: article
   title: Gaussian-Process Factor Analysis for Low-Dimensional Single-Trial Analysis of Neural Population Activity
@@ -67,7 +67,7 @@ references:
   doi: 10.1152/jn.90941.2008
   identifiers:
   - type: other
-    value: PMID:19357332
+    value: '19357332'
     description: PubMed ID
 - type: software
   title: Elephant 1.2.1
@@ -129,7 +129,7 @@ references:
   doi: 10.3389/fninf.2014.00010
   identifiers:
   - type: other
-    value: PMID:24600386
+    value: '24600386'
     description: PubMed ID
 - type: article
   title: 'PyTorch: An Imperative Style, High-Performance Deep Learning Library'
@@ -197,7 +197,7 @@ references:
   doi: 10.1126/science.aad1935
   identifiers:
   - type: other
-    value: PMID:27013730
+    value: '27013730'
     description: PubMed ID
 - type: data
   title: Diversity in neural firing dynamics supports both rigid and learned hippocampal sequences
@@ -630,7 +630,7 @@ references:
   doi: 10.1038/s41586-025-09235-0
   identifiers:
   - type: other
-    value: PMID:40903598
+    value: '40903598'
     description: PubMed ID
 - type: data
   title: IBL - Brain Wide Map

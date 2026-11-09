@@ -230,3 +230,32 @@ def consistency_matrix(M: np.ndarray, names: list[str], title: str, out: Path) -
     fig.savefig(out, dpi=DPI)
     plt.close(fig)
     return out
+
+
+def trial_trajectories(sid: str, tj: dict, out: Path) -> Path:
+    """Condition-averaged PCA trajectories: PC1 and PC2 vs time, and PC1 vs PC2."""
+    plt = _plt()
+    traj, tt = tj["traj"], tj["time"]
+    fig, axes = plt.subplots(1, 3, figsize=(11, 3.4))
+    for k, c in enumerate(tj["conditions"][: len(SERIES)]):
+        col = SERIES[k]
+        lab = f"{c} (n={tj['counts'][k]})"
+        for d in range(min(2, traj.shape[2])):
+            axes[d].plot(tt, traj[k, :, d], color=col, lw=2, label=lab)
+        axes[2].plot(traj[k, :, 0], traj[k, :, 1], color=col, lw=2)
+        axes[2].scatter([traj[k, 0, 0]], [traj[k, 0, 1]], color=col, s=18, marker="o", zorder=3)
+        z = int(np.argmin(np.abs(tt)))
+        axes[2].scatter([traj[k, z, 0]], [traj[k, z, 1]], color=col, s=30, marker="^", zorder=3, edgecolors="white")
+    for d in range(2):
+        axes[d].axvline(0, color=MUTED, lw=0.8, ls=":")
+        axes[d].set_xlabel(f"time from {tj['align']} (s)")
+        axes[d].set_ylabel(f"PC {d + 1}")
+    axes[0].legend(frameon=False, fontsize=7)
+    axes[2].set_xlabel("PC 1")
+    axes[2].set_ylabel("PC 2")
+    axes[2].set_title("dot: window start, triangle: alignment event", fontsize=8)
+    fig.suptitle(f"{sid}: trial-averaged population trajectories", fontsize=11)
+    fig.tight_layout()
+    fig.savefig(out, dpi=DPI)
+    plt.close(fig)
+    return out

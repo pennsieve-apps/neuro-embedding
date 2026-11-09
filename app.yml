@@ -5,8 +5,8 @@ application:
   description: >-
     Low-dimensional population embeddings of neural activity (spike-sorted units or calcium ROIs)
     aligned with behaviour by neuro-align: PCA and factor analysis of smoothed, z-scored activity
-    (how many dimensions the population uses), GPFA (elephant; single-trial latent trajectories, on
-    trials when the session has them), and CEBRA (Schneider, Lee & Mathis 2023): CEBRA-Time
+    (how many dimensions the population uses), PCA trajectories averaged by trial condition (choice x
+    stimulus side) for task data, optional GPFA (elephant; single-trial latent trajectories), and CEBRA (Schneider, Lee & Mathis 2023): CEBRA-Time
     (self-supervised) and CEBRA-Behavior (with the aligned behaviour variables, position for
     hippocampal recordings) in 3-D, with a shuffled-label control, goodness of fit (InfoNCE), a kNN
     check on held-out time, and the consistency of the embeddings across sessions and animals.
@@ -37,8 +37,10 @@ runtime:
 parameters:
   - name: METHODS
     type: string
-    description: Comma-separated subset of pca, fa, gpfa, cebra.
-    defaultValue: "pca,fa,gpfa,cebra"
+    description: >-
+      Comma-separated subset of pca, fa, gpfa, cebra. GPFA is off by default (slow on hundreds of
+      units); trial-based sessions get PCA trajectories averaged by choice x stimulus side instead.
+    defaultValue: "pca,fa,cebra"
   - name: BEHAVIOR_VARS
     type: string
     description: >-
@@ -164,7 +166,7 @@ parameters:
     description: auto (the GPU when torch sees one, else CPU, logged), true (same, warning when there is none) or false.
     defaultValue: auto
     validValues: [auto, "true", "false"]
-# Input ports take any file: neuro-align's port holds .npz, .parquet, .json and .csv files.
+# Input media types: what the sibling app's output port declares (conventions.md, "Port media types").
 inputs:
   - name: aligned
     description: >-
@@ -172,6 +174,12 @@ inputs:
       neuron_meta, behavior_names/units/kinds, epoch_mask), events.parquet (trials and other
       intervals), spikes.npz (spike times, for GPFA) and manifest.json, one folder per session;
       found by name anywhere below the port (or INPUT_DIR).
+    mediaTypes:
+      - application/octet-stream
+      - application/vnd.apache.parquet
+      - application/json
+      - text/csv
+      - image/png
     placement: subfolder
     required: true
 outputs:
