@@ -28,7 +28,7 @@ application:
     - deep-learning
     - gpu
 runtime:
-  # Shared by both variants (below); these are the gpu variant's values. Measured on CPU (peak 3.6 GB on
+  # Shared by both variants (below); these are the gpu variant's values. Measured on CPU (peak 3.8 GB on
   # the IBL session with 186 units and 80,064 bins; 1.05 GB on Grosmark): see README "Runtime".
   cpu: 4096
   memory: 8192

@@ -153,8 +153,8 @@ with 1 thread, 0.9-1.1 s with 2-4 threads):
 | Session | Where | Wall time | Peak memory |
 |---|---|---|---|
 | Grosmark `sub-Buddy` (58 units, 93,117 bins of 25 ms, run epoch 10,654 bins) | Docker, cpu image, linux/amd64 emulation, `--cpus 2 --memory 4g` | 986 s (CEBRA, 3 × 3000 iterations: ~900 s) | 1,054 MB (cgroup `memory.peak`) |
-| Grosmark, same | native arm64 venv | 1,480 s | 0.95 GB RSS |
-| IBL `sub-NR-0031` (186 units, 80,064 bins, whole session) | native arm64 venv | 3,056 s (CEBRA 3 × 3000 iterations on 62,613-78,267 bins: 2,900 s) | 3.6 GB RSS |
+| Grosmark, same | native arm64 venv | 1,021 s | 0.96 GB RSS |
+| IBL `sub-NR-0031` (186 units, 80,064 bins, whole session) | native arm64 venv | 2,324 s (CEBRA 3 × 3000 iterations: 1,960 s) | 3.8 GB RSS |
 | Synthetic fixture (3 sessions, 200 iterations) | Docker, cpu image, emulation | 3,202 s under the heaviest load | 841 MB |
 
 PCA and FA take seconds (IBL: 5 s and 27 s), the trial-averaged trajectories under a second; the
@@ -170,20 +170,23 @@ read-only root file system with only `/tmp` writable (the Lambda recipe of the b
 On neuro-align's output of the demo data (`data/work/<demo>/neuro-embedding/`), cpu-variant
 settings (CEBRA 3000 iterations, batch 256):
 
-- **Grosmark & Buzsáki, rat Buddy, linear track** (58 CA1 units, run epoch 10,654 bins of 25 ms, the first 8,523 used to train CEBRA-Behavior;
-  CEBRA-Behavior labels: 1-D position + running direction). CEBRA-Behavior goodness of fit on the
-  held-out 20 % of the run: **0.62 bits**, vs **-0.17 bits** for the shuffled-label control and 0.37
-  bits for CEBRA-Time; kNN decoding of position from the 3-D embedding on the held-out bins: R²
-  **0.48** (CEBRA-Behavior), 0.54 (CEBRA-Time), -0.22 (shuffled control), -0.22 (top 3 PCs). The
+- **Grosmark & Buzsáki, rat Buddy, linear track** (58 CA1 units, run epoch 10,654 bins of 25 ms;
+  the first 8,523 train all three CEBRA models, the last 2,121 after a 10-bin gap are held out;
+  CEBRA-Behavior labels: 1-D position + running direction). Goodness of fit on the held-out bins:
+  CEBRA-Behavior **0.63 bits**, shuffled-label control **-0.15 bits**, CEBRA-Time 0.11 bits; kNN
+  decoding of position from the 3-D embedding on the held-out bins: R² **0.49** (CEBRA-Behavior),
+  0.22 (CEBRA-Time), -0.21 (shuffled control), -0.23 (top 3 PCs). (In an earlier version CEBRA-Time
+  and the control were also trained on the held-out bins, which put CEBRA-Time at 0.37 bits and
+  0.54; these numbers are the fair ones.) The
   activity is high-dimensional to linear methods (3 PCs: 16 % of the variance; 80 % needs 37 PCs;
   participation ratio 37; FA's held-out likelihood still rises at 10 factors), while a 3-D
   nonlinear embedding carries position. With the cpu variant's 3000 iterations the embedding is a
   partly closed ring rather than the paper's clean figure; the gpu variant's 10000 iterations are
   the setting to show.
 - **IBL `sub-NR-0031`** (186 units in 13 regions, 80,064 bins; labels: wheel velocity, pupil,
-  licks). CEBRA-Behavior goodness of fit 0.15 bits vs -0.02 bits shuffled; kNN wheel-velocity R² on
-  held-out bins is negative for every embedding (CEBRA-Behavior -0.17, shuffled -0.35, CEBRA-Time
-  -0.24, PCA -0.43): on this session the wheel is not captured by a 3-D embedding, in line with
+  licks). CEBRA-Behavior goodness of fit on the held-out bins 0.17 bits vs -0.05 bits shuffled
+  (CEBRA-Time 0.14); kNN wheel-velocity R² on held-out bins is negative for every embedding
+  (CEBRA-Behavior -0.16, shuffled -0.36, CEBRA-Time -0.46, PCA -0.43): on this session the wheel is not captured by a 3-D embedding, in line with
   BrainWideBench (Andre et al. 2026). The trial-averaged trajectories (400 trials, choice ×
   stimulus side, aligned to the stimulus onset) share a stimulus-evoked excursion peaking about
   0.25 s after onset; the rare error trials with a right stimulus (n = 15) take a visibly different,
