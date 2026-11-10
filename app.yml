@@ -1,0 +1,242 @@
+# yaml-language-server: $schema=https://schemas.pennsieve.io/app-manifest/v1.json
+schemaVersion: "1.0"
+application:
+  name: neuro-embedding
+  description: >-
+    Low-dimensional population embeddings of neural activity (spike-sorted units or calcium ROIs)
+    aligned with behaviour by neuro-align: PCA and factor analysis of smoothed, z-scored activity
+    (how many dimensions the population uses), PCA trajectories averaged by trial condition (choice x
+    stimulus side) for task data, optional GPFA (elephant; single-trial latent trajectories), and CEBRA (Schneider, Lee & Mathis 2023): CEBRA-Time
+    (self-supervised) and CEBRA-Behavior (with the aligned behaviour variables, position for
+    hippocampal recordings) in 3-D, with a shuffled-label control, goodness of fit (InfoNCE), a kNN
+    check on held-out time, and the consistency of the embeddings across sessions and animals.
+    Writes the embeddings (npz), the 3-D embedding coloured by behaviour as PNG and as an
+    interactive HTML page, explained-variance, GPFA and loss figures, embedding.csv and
+    summary.json. Runs on a GPU (default; CEBRA trains 10-50x faster) or on CPU with fewer
+    iterations. CEBRA is Apache-2.0; EPFL holds a patent on the method (see THIRD_PARTY.md).
+  type: processor
+  tags:
+    - neuroscience
+    - neural-decoding
+    - electrophysiology
+    - calcium-imaging
+    - nwb
+    - population-dynamics
+    - dimensionality-reduction
+    - cebra
+    - gpfa
+    - deep-learning
+    - gpu
+runtime:
+  # Shared by both variants (below); these are the gpu variant's values. Measured on CPU (peak 3.8 GB on
+  # the IBL session with 186 units and 80,064 bins; 1.05 GB on Grosmark): see README "Runtime".
+  cpu: 4096
+  memory: 8192
+  computeTypes:
+    - gpu
+  timeoutSeconds: 14400
+parameters:
+  - name: METHODS
+    type: string
+    description: >-
+      Comma-separated subset of pca, fa, gpfa, cebra. GPFA is off by default (slow on hundreds of
+      units); trial-based sessions get PCA trajectories averaged by choice x stimulus side instead.
+    defaultValue: "pca,fa,cebra"
+  - name: BEHAVIOR_VARS
+    type: string
+    description: >-
+      Behaviour variables CEBRA-Behavior is trained with and the figures are coloured by, as named
+      in neuro-align's behavior_names (comma-separated). auto: the position variables when the
+      session has any (a 1-D linear-track position also gets the running direction, as in the
+      CEBRA paper), else up to three continuous variables (wheel velocity, speeds, pupil, ...).
+    defaultValue: auto
+  - name: BIN_SIZE_S
+    type: number
+    description: Re-bin the aligned activity to this bin size (s, a multiple of neuro-align's bin); 0 keeps neuro-align's bins.
+    defaultValue: 0
+    min: 0
+  - name: SMOOTH_S
+    type: number
+    description: SD (s) of the Gaussian smoothing applied before PCA and factor analysis (counts are square-rooted first).
+    defaultValue: 0.05
+    min: 0
+  - name: N_COMPONENTS
+    type: integer
+    description: PCA components saved, and the largest number of factors tried by factor analysis.
+    defaultValue: 10
+    min: 1
+  - name: CV_FOLDS
+    type: integer
+    description: Blocked (contiguous) folds of the factor-analysis cross-validation.
+    defaultValue: 5
+    min: 2
+  - name: GPFA_MAX_NEURONS
+    type: integer
+    description: GPFA uses at most this many neurons (the most active); GPFA's cost grows quickly with neurons.
+    defaultValue: 150
+    min: 2
+  - name: GPFA_BIN_S
+    type: number
+    description: GPFA bin size (s).
+    defaultValue: 0.05
+    min: 0.001
+  - name: GPFA_DIMS
+    type: integer
+    description: GPFA latent dimensions.
+    defaultValue: 3
+    min: 1
+  - name: GPFA_ITERS
+    type: integer
+    description: GPFA EM iterations (elephant's default is 500).
+    defaultValue: 100
+    min: 1
+  - name: GPFA_SEGMENT_S
+    type: number
+    description: Without trials, GPFA runs on consecutive segments of this length (s) of the epoch.
+    defaultValue: 2.0
+    min: 0.1
+  - name: GPFA_MAX_SEGMENTS
+    type: integer
+    description: At most this many trials or segments (evenly spaced over the session) go into GPFA.
+    defaultValue: 150
+    min: 5
+  - name: TRIAL_ALIGN
+    type: string
+    description: >-
+      Column of the trials table GPFA trials are aligned to; auto: the stimulus onset when there is
+      one (IBL gabor_stimulus_onset_time, stim_on_time, ...), else the trial start.
+    defaultValue: auto
+  - name: TRIAL_WINDOW_S
+    type: string
+    description: GPFA trial window 'start,stop' in seconds relative to TRIAL_ALIGN.
+    defaultValue: "-0.2,1.0"
+  - name: CEBRA_ITERS
+    type: integer
+    description: CEBRA training iterations per model (three models per session). gpu 10000 (the CEBRA paper's hippocampus setting), cpu 3000.
+    defaultValue: 10000
+    min: 10
+  - name: CEBRA_BATCH
+    type: integer
+    description: CEBRA batch size (samples per iteration). gpu 512, cpu 256.
+    defaultValue: 512
+    min: 16
+  - name: CEBRA_DIMS
+    type: integer
+    description: CEBRA output dimensions (3 for the 3-D figures).
+    defaultValue: 3
+    min: 2
+  - name: CEBRA_ARCH
+    type: string
+    description: CEBRA model architecture (offset10-model = the paper's hippocampus model, 10 bins receptive field).
+    defaultValue: offset10-model
+    validValues: [offset10-model, offset5-model, offset1-model, offset10-model-mse, offset36-model]
+  - name: CEBRA_LR
+    type: number
+    description: CEBRA learning rate.
+    defaultValue: 0.0003
+    min: 0
+  - name: CEBRA_TEMPERATURE
+    type: number
+    description: CEBRA InfoNCE temperature.
+    defaultValue: 1.0
+    min: 0
+  - name: TRAIN_FRACTION
+    type: number
+    description: >-
+      CEBRA-Behavior is trained on the first TRAIN_FRACTION of the epoch's time bins; the rest is
+      held out for the goodness of fit and the kNN check (and for neuro-decoding's kNN decoder).
+    defaultValue: 0.8
+    min: 0.3
+    max: 0.99
+  - name: MAX_PLOT_POINTS
+    type: integer
+    description: At most this many time bins (random, seeded) are drawn in the 3-D figures.
+    defaultValue: 20000
+    min: 100
+  - name: SEED
+    type: integer
+    description: Seed for numpy and torch (CEBRA training, label shuffles, subsampling).
+    defaultValue: 42
+  - name: THREADS
+    type: integer
+    description: CPU threads; 0 = from the container's CPU quota.
+    defaultValue: 0
+    min: 0
+  - name: USE_GPU
+    type: string
+    description: auto (the GPU when torch sees one, else CPU, logged), true (same, warning when there is none) or false.
+    defaultValue: auto
+    validValues: [auto, "true", "false"]
+# Input media types: what the sibling app's output port declares (conventions.md, "Port media types").
+inputs:
+  - name: aligned
+    description: >-
+      neuro-align's aligned output: neuro-align/<session_id>/aligned.npz (t, X, Y, neuron_ids,
+      neuron_meta, behavior_names/units/kinds, epoch_mask), events.parquet (trials and other
+      intervals), spikes.npz (spike times, for GPFA) and manifest.json, one folder per session;
+      found by name anywhere below the port (or INPUT_DIR).
+    mediaTypes:
+      - application/octet-stream
+      - application/vnd.apache.parquet
+      - application/json
+      - text/csv
+      - image/png
+    placement: subfolder
+    required: true
+outputs:
+  - name: embedding
+    description: >-
+      neuro-embedding/<session_id>/: <session_id>_embeddings.npz (pca, fa, cebra_time,
+      cebra_behavior with cebra_behavior_train_mask, cebra_shuffled, labels, gpfa trajectories, t,
+      epoch_mask), <session_id>_embedding_3d.png and .html (interactive, offline),
+      _explained_variance.png, _cebra_loss.png, _gpfa.png, summary.json; and embedding.csv
+      (session_id, subject_id, condition, group, method, metric, value), consistency.csv and
+      consistency.png (two or more sessions), summary.json, provenance.json.
+    mediaTypes:
+      - application/octet-stream
+      - image/png
+      - text/html
+      - text/csv
+      - application/json
+variants:
+  - id: gpu
+    name: GPU
+    default: true
+    description: >-
+      CUDA PyTorch on an NVIDIA GPU (T4 or newer); CEBRA with the paper's 10000 iterations and
+      batch size 512. Falls back to CPU (logged) when no GPU is visible.
+    build:
+      args:
+        TORCH_FLAVOUR: cuda
+    runtime:
+      computeTypes: [gpu]
+  - id: cpu
+    name: CPU
+    description: >-
+      CPU-only PyTorch on a standard task; CEBRA with 3000 iterations and batch size 256 (measured
+      about 16 minutes on the Grosmark demo session and about 50 minutes on a full IBL session),
+      with a higher loss and a less clean embedding than the gpu variant's 10000 iterations (on the
+      Grosmark demo, a partly closed ring).
+    build:
+      args:
+        TORCH_FLAVOUR: cpu
+    runtime:
+      computeTypes: [standard]
+      memory: 6144
+    parameters:
+      CEBRA_ITERS:
+        defaultValue: 3000
+      CEBRA_BATCH:
+        defaultValue: 256
+
+# How a release is tested before it is made public: the inputs a review run uses.
+# See app-deploy-service docs/app-manifest-review.md.
+review:
+  version: 1
+  generate:
+    command: python -m tests.make_fixture "$REVIEW_INPUT_DIR" --layout linked --short
+    root: linked
+  parameters:
+    CEBRA_ITERS: 300
+    CEBRA_BATCH: 256
+    GPFA_ITERS: 20

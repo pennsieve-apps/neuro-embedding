@@ -1,5 +1,277 @@
 # neuro-embedding
 
-Neural population embeddings with PCA, GPFA and CEBRA.
+**Built on CEBRA and Elephant's GPFA, not developed by Pennsieve.** [CEBRA](https://github.com/AdaptiveMotorControlLab/CEBRA)
+was developed by Steffen Schneider, Jin Hwa Lee and Mackenzie W. Mathis at the Mathis Laboratory of
+Adaptive Intelligence, EPFL (Brain Mind Institute, Geneva) ([Schneider, Lee & Mathis, *Nature* 2023](https://doi.org/10.1038/s41586-023-06031-6)).
+Gaussian-process factor analysis (GPFA) was developed by Byron Yu, John Cunningham, Gopal Santhanam,
+Stephen Ryu, Krishna Shenoy and Maneesh Sahani at Stanford University and the Gatsby Computational
+Neuroscience Unit, UCL ([Yu et al., *J Neurophysiol* 2009](https://doi.org/10.1152/jn.90941.2008));
+this app runs the implementation in [Elephant](https://github.com/NeuralEnsemble/elephant), the
+Electrophysiology Analysis Toolkit of NeuralEnsemble (Michael Denker, Sonja Grün and colleagues,
+Jülich Research Centre; [doi:10.5281/zenodo.1186602](https://doi.org/10.5281/zenodo.1186602)), on
+spike trains in [Neo](https://github.com/NeuralEnsemble/python-neo) (Garcia et al. 2014). PCA,
+factor analysis and kNN come from [scikit-learn](https://scikit-learn.org). Pennsieve packages these
+methods as a workflow step and did not develop them; please cite the original papers (below). The demo
+data are from Andres Grosmark and György Buzsáki (NYU; DANDI:000044) and the International Brain
+Laboratory (DANDI:000409).
 
-Part of the [systems neuroscience workflows](https://github.com/pennsieve-apps/workflow-systems-neuroscience) on Pennsieve. The app arrives in its first pull request.
+The step after `neuro-align` in the **Neural Population Dynamics & Decoding** workflow:
+
+- `neuro-align → {neuro-encoding, neuro-embedding, neuro-decoding} → neuro-report`
+
+**For a neuroscientist.** A population of neurons can carry far fewer independent signals than it
+has neurons: when a rat runs along a track, the activity of a hundred place cells traces out a
+ring or a line in a space of a few dimensions. This app finds that low-dimensional structure in
+each session and shows it in 3-D, coloured by what the animal was doing. It answers: how many
+dimensions does the activity use (PCA, factor analysis)? How does the population state evolve
+around a task event, for each choice and stimulus side (trial-averaged PCA trajectories; optionally
+single trials with GPFA)? Is there a smooth map from behaviour to population activity, and is it the
+same in different animals (CEBRA)? The headline figure is CEBRA's: the activity of each time bin
+as a point in 3-D, coloured by position; a clean ring or line that the shuffled-label control does
+not show means the population encodes position.
+
+**For a computational analyst.** Per session: PCA and factor analysis (FA dimensionality by
+blocked cross-validated log-likelihood) of Gaussian-smoothed, square-rooted, z-scored activity;
+for trial-based sessions, PCA of the trial-averaged activity per choice × stimulus side; optionally
+(`METHODS=...,gpfa`; off by default because it is slow on hundreds of units) elephant's GPFA on at
+most `GPFA_MAX_NEURONS` neurons, on trials when the session has a trials table, else on
+fixed-length segments of the epoch; CEBRA (`offset10-model`, cosine distance,
+InfoNCE, 3-D output) trained three ways, each on the first `TRAIN_FRACTION` of the epoch's bins:
+CEBRA-Time (`conditional="time"`, no labels), CEBRA-Behavior (`conditional="time_delta"` with the
+behaviour variables), and CEBRA-Behavior with shuffled labels (the control). The remaining bins,
+after a gap of the model's receptive field (10 bins for `offset10-model`), are held out from all
+three models and give the InfoNCE loss, the goodness of fit in bits (CEBRA's
+`infonce_to_goodness_of_fit`: 0 = chance, log2(batch size) = perfect) and a kNN (cosine, k = 25)
+decoding check of the first variable. With two or more sessions that share that variable, CEBRA's
+`consistency_score` (R² of the best linear map between label-binned embeddings) compares them.
+
+## Ports
+
+| Port | Direction | Content |
+|---|---|---|
+| `aligned` | input (subfolder, required) | neuro-align's output: `neuro-align/<session_id>/aligned.npz`, `events.parquet`, `spikes.npz`, `manifest.json`. Found by name anywhere below the port (or `INPUT_DIR` when merged). |
+| `embedding` | output | `neuro-embedding/...` (below) |
+
+## Method
+
+1. **Read** each session's `aligned.npz` (bins × neurons `X`: spike counts or, for calcium data, a
+   rate or ΔF/F; behaviour `Y`; `epoch_mask`). Only bins in neuro-align's epoch (e.g. running) are
+   used to fit; embeddings are written for every bin. Angles (head direction) become sine and cosine.
+2. **Behaviour labels** (`BEHAVIOR_VARS=auto`): the position variables when there are any (a 1-D
+   linear-track position also gets the running direction as two binary labels, as in the CEBRA
+   paper's rat hippocampus model), else up to three continuous variables (wheel velocity, speeds,
+   pupil); labels are z-scored. The first is the colour of the figures.
+3. **PCA / FA**: activity (square-rooted counts) smoothed with a Gaussian of SD `SMOOTH_S`, z-scored
+   over the epoch. PCA: variance explained, PCs for 50/80/90 %, participation ratio. FA: 1 to
+   `N_COMPONENTS` factors, contiguous `CV_FOLDS`-fold held-out log-likelihood (on at most 20,000
+   evenly spaced bins, leaving out neurons that are silent in one block); the best number of
+   factors and the mean shared-variance fraction (communality / total variance). A best number
+   equal to `N_COMPONENTS` means "at least that many".
+4. **Trial-averaged trajectories** (sessions with a trials table): the smoothed, z-scored activity
+   in `TRIAL_WINDOW_S` around `TRIAL_ALIGN` averaged per condition (choice × stimulus side, from
+   the trials table: IBL `mouse_wheel_choice` × `gabor_stimulus_side`, or `choice` ×
+   `stimulus_side`), conditions with at least 3 trials; PCA of the condition averages, top 3 PCs.
+5. **GPFA** (optional, `METHODS` must list `gpfa`; spiking data only): up to `GPFA_MAX_SEGMENTS` trials (window `TRIAL_WINDOW_S` around
+   `TRIAL_ALIGN`, by default the stimulus onset) or `GPFA_SEGMENT_S`-long chunks of the epoch, the
+   `GPFA_MAX_NEURONS` most active neurons that fire in at least 10 % of the segments,
+   `GPFA_DIMS` latents, `GPFA_ITERS` EM iterations, bins of `GPFA_BIN_S`; orthonormalised latent
+   trajectories, the learned timescales; the figure averages them by choice (or stimulus side).
+6. **CEBRA**: as above; `CEBRA_ITERS` iterations, batch `CEBRA_BATCH`, learning rate `CEBRA_LR`,
+   temperature `CEBRA_TEMPERATURE`, seeded. Spike counts are the input as in the paper; calcium
+   traces are z-scored.
+7. **Consistency** between sessions sharing the colour variable: CEBRA-Behavior and CEBRA-Time.
+
+## Parameters
+
+| Name | Default | What it does |
+|---|---|---|
+| `METHODS` | `pca,fa,cebra` | Which methods run (`pca` includes the trial-averaged trajectories; add `gpfa` for GPFA). |
+| `BEHAVIOR_VARS` | `auto` | CEBRA-Behavior labels and figure colour (see Method 2), or a comma-separated list of neuro-align variable names. |
+| `BIN_SIZE_S` | `0` | Re-bin neuro-align's bins (s); 0 keeps them (25 ms for units). |
+| `SMOOTH_S` | `0.05` | Gaussian SD (s) before PCA / FA. |
+| `N_COMPONENTS` | `10` | PCs saved; largest number of factors tried. |
+| `CV_FOLDS` | `5` | Blocked folds of the FA cross-validation. |
+| `GPFA_MAX_NEURONS` | `150` | Neuron cap of GPFA (the most active). |
+| `GPFA_BIN_S` | `0.05` | GPFA bin (s). |
+| `GPFA_DIMS` | `3` | GPFA latents. |
+| `GPFA_ITERS` | `100` | GPFA EM iterations. |
+| `GPFA_SEGMENT_S` | `2.0` | Segment length (s) without trials. |
+| `GPFA_MAX_SEGMENTS` | `150` | Trials / segments cap (evenly spaced). |
+| `TRIAL_ALIGN` | `auto` | Trials-table column GPFA trials are aligned to (auto: stimulus onset, else trial start). |
+| `TRIAL_WINDOW_S` | `-0.2,1.0` | GPFA trial window (s) around `TRIAL_ALIGN`. |
+| `CEBRA_ITERS` | `10000` (gpu), `3000` (cpu) | CEBRA iterations per model (3 models per session). |
+| `CEBRA_BATCH` | `512` (gpu), `256` (cpu) | CEBRA batch size. |
+| `CEBRA_DIMS` | `3` | Embedding dimensions. |
+| `CEBRA_ARCH` | `offset10-model` | CEBRA model (receptive field of 10 bins). |
+| `CEBRA_LR` | `0.0003` | Learning rate. |
+| `CEBRA_TEMPERATURE` | `1.0` | InfoNCE temperature. |
+| `TRAIN_FRACTION` | `0.8` | All CEBRA models train on this first fraction of the epoch; the rest (after a receptive-field gap) is held out. |
+| `MAX_PLOT_POINTS` | `20000` | Bins drawn in the 3-D figures (random, seeded). |
+| `SEED` | `42` | numpy and torch seed. |
+| `THREADS` | `0` | CPU threads; 0 = the container's CPU quota. |
+| `USE_GPU` | `auto` | `auto` / `true` (GPU when torch sees one, else CPU with a logged message) / `false`. |
+
+Exit codes: `0` ok, `1` no `aligned.npz` found or every session failed, `2` bad parameters. A
+session that fails is logged and skipped; a failing GPFA is logged and the rest goes on.
+
+## Outputs
+
+`neuro-embedding/` in the `embedding` port:
+
+- `<session_id>/<session_id>_embeddings.npz`: `t` (bin centres, s, session clock), `epoch_mask`,
+  `pca` (bins × `N_COMPONENTS`), `pca_explained_variance_ratio`, `fa` (bins × factors),
+  `cebra_time`, `cebra_behavior`, `cebra_behavior_train_mask` (bins the CEBRA models were trained
+  on), `cebra_heldout_mask` (the held-out bins after the gap),
+  `cebra_shuffled` (bins × 3 each), `labels`, `label_names`, `behavior`, `behavior_names`, `gpfa`
+  (segments × latents × time), `gpfa_segments` (start, stop in s), `gpfa_neuron_ids`,
+  `pca_trial_trajectories` (conditions × time × 3), `pca_trial_time`, `pca_trial_conditions`,
+  `pca_trial_counts`. No pickles.
+- `<session_id>/<session_id>_embedding_3d.png`: PCA, CEBRA-Time, CEBRA-Behavior and the shuffled
+  control in 3-D, coloured by the first behaviour variable (blue / orange for the two running
+  directions of a linear track); `<session_id>_embedding_3d.html`: the same, interactive (plotly,
+  with plotly.js embedded: opens offline).
+- `<session_id>/<session_id>_explained_variance.png`, `_cebra_loss.png`, `_pca_trials.png` (trial
+  sessions), `_gpfa.png` (with GPFA), `summary.json`.
+- `embedding.csv`: `session_id, subject_id, condition, group, method, metric, value` (long format:
+  `pca` var_explained_3pc, n_pc_50/80/90, participation_ratio; `pca_trials` var_explained_3pc;
+  `fa` n_factors_cv,
+  shared_variance_fraction; `gpfa` n_neurons, n_segments, final_loglik; `cebra_*`
+  train_loss_final, goodness_of_fit_bits, `knn_r2_<variable>_test`).
+- `consistency.csv` (`variable, embedding, source, target, consistency_r2`) and `consistency.png`,
+  with two or more sessions.
+- `summary.json` (headline numbers per session, consistency, the figures with captions in the
+  order the report shows them), `provenance.json`.
+
+## Runtime
+
+Measured on the demo data (neuro-align output in `data/work/{grosmark,ibl}/neuro-align/`) on an
+M-series Mac **shared with many other builds (load average 50-150 during these runs)**, so wall
+times are pessimistic. CEBRA with the cpu variant's settings (3000 iterations, batch 256) and one
+thread (under that load PyTorch was 7-9 times slower per iteration with several threads: 0.12 s
+with 1 thread, 0.9-1.1 s with 2-4 threads):
+
+| Session | Where | Wall time | Peak memory |
+|---|---|---|---|
+| Grosmark `sub-Buddy` (58 units, 93,117 bins of 25 ms, run epoch 10,654 bins) | Docker, cpu image, linux/amd64 emulation, `--cpus 2 --memory 4g` | 986 s (CEBRA, 3 × 3000 iterations: ~900 s) | 1,054 MB (cgroup `memory.peak`) |
+| Grosmark, same | native arm64 venv | 1,021 s | 0.96 GB RSS |
+| IBL `sub-NR-0031` (186 units, 80,064 bins, whole session) | native arm64 venv | 2,324 s (CEBRA 3 × 3000 iterations: 1,960 s) | 3.8 GB RSS |
+| Synthetic fixture (3 sessions, 200 iterations) | Docker, cpu image, emulation | 3,202 s under the heaviest load | 841 MB |
+
+PCA and FA take seconds (IBL: 5 s and 27 s), the trial-averaged trajectories under a second; the
+time is CEBRA's (three models per session), which grows with iterations, not with session length.
+GPFA (optional) took 4-50 s on 51-80 neurons × 66-140 trials with 20-100 EM iterations, but grows
+steeply with neurons. **GPU numbers (the gpu variant's 10000 iterations, batch 512) are to be
+measured on the dev compute node.** The gpu image was checked to start and fall back to CPU without
+a GPU (`USE_GPU=auto: cuda not available, using cpu`), and the images ran as an arbitrary user on a
+read-only root file system with only `/tmp` writable (the Lambda recipe of the builder brief).
+
+## Demo results
+
+On neuro-align's output of the demo data (`data/work/<demo>/neuro-embedding/`), cpu-variant
+settings (CEBRA 3000 iterations, batch 256):
+
+- **Grosmark & Buzsáki, rat Buddy, linear track** (58 CA1 units, run epoch 10,654 bins of 25 ms;
+  the first 8,523 train all three CEBRA models, the last 2,121 after a 10-bin gap are held out;
+  CEBRA-Behavior labels: 1-D position + running direction). Goodness of fit on the held-out bins:
+  CEBRA-Behavior **0.60 bits**, shuffled-label control **-0.14 bits**, CEBRA-Time 0.10 bits; kNN
+  decoding of position from the 3-D embedding on the held-out bins: R² **0.53** (CEBRA-Behavior),
+  0.22 (CEBRA-Time), -0.25 (shuffled control), -0.23 (top 3 PCs). (In an earlier version CEBRA-Time
+  and the control were also trained on the held-out bins, which put CEBRA-Time at 0.37 bits and
+  0.54; these numbers are the fair ones.) The
+  activity is high-dimensional to linear methods (3 PCs: 16 % of the variance; 80 % needs 37 PCs;
+  participation ratio 37; FA's held-out likelihood still rises at 10 factors), while a 3-D
+  nonlinear embedding carries position. With the cpu variant's 3000 iterations the embedding is a
+  partly closed ring rather than the paper's clean figure; the gpu variant's 10000 iterations are
+  the setting to show.
+- **IBL `sub-NR-0031`** (186 units in 13 regions, 80,064 bins; labels: wheel velocity, pupil,
+  licks). CEBRA-Behavior goodness of fit on the held-out bins 0.17 bits vs -0.05 bits shuffled
+  (CEBRA-Time 0.14); kNN wheel-velocity R² on held-out bins is negative for every embedding
+  (CEBRA-Behavior -0.16, shuffled -0.36, CEBRA-Time -0.46, PCA -0.43): on this session the wheel is not captured by a 3-D embedding, in line with
+  BrainWideBench (Andre et al. 2026). The trial-averaged trajectories (400 trials, choice ×
+  stimulus side, aligned to the stimulus onset) share a stimulus-evoked excursion peaking about
+  0.25 s after onset; the rare error trials with a right stimulus (n = 15) take a visibly different,
+  smaller path; 3 PCs hold 73 % of the variance of the condition averages. 3 PCs explain 49 % of the single-bin variance, 80 % needs 39
+  PCs.
+- **Synthetic fixture**: CEBRA-Behavior beats the shuffled control on both planted track sessions
+  (goodness of fit ≥ 0.2 bits higher, kNN R² of position ≥ 0.3 higher), the two rats' embeddings
+  are consistent (R² > 0.5; 0.93 with 200 iterations in Docker), the IBL-like session's GPFA and
+  trial-averaged trajectories split by choice (tests in `tests/`).
+
+## Variants
+
+| Variant | Image | Compute | Defaults | Pick it when |
+|---|---|---|---|---|
+| `gpu` (default, "GPU") | CUDA 12.6 PyTorch 2.14.1 (NVIDIA libraries as wheels; driver 550, T4 or newer): 3.9 GB compressed, 11.1 GB unpacked | `gpu`, 4 vCPU / 8 GiB | `CEBRA_ITERS=10000`, `CEBRA_BATCH=512` (the CEBRA paper's rat hippocampus setting) | A GPU is available. |
+| `cpu` ("CPU") | CPU-only PyTorch 2.14.1+cpu, no NVIDIA libraries: 0.42 GB compressed, 1.9 GB unpacked | `standard`, 4 vCPU / 6 GiB | `CEBRA_ITERS=3000`, `CEBRA_BATCH=256` | No GPU; higher losses, and on Grosmark a partly closed ring instead of the paper's clean one (see Demo results). |
+
+The gpu image falls back to CPU when no GPU is visible (`USE_GPU=auto: cuda not available, using
+cpu`), checked here. CEBRA's VRAM use is small (a 4-layer 1-D convolutional network with 32 hidden
+units, batches of 512 × 10 bins): well under 1 GB on a T4. On a bigger card nothing needs changing;
+for many sessions, raising `CEBRA_BATCH` to 1024 or 2048 improves the loss estimate.
+
+## Limitations
+
+- An embedding is a description, not a mechanism: a ring in CEBRA-Behavior shows that position
+  is encoded, not how. CEBRA-Behavior is trained with the labels, so its structure is partly
+  imposed by them; that is why the shuffled-label control and the held-out goodness of fit are
+  shown next to it. Judge CEBRA-Time (no labels) and PCA for structure the data have on their own.
+- Goodness of fit and kNN R² are computed on the last `1 - TRAIN_FRACTION` of the epoch (one split,
+  not cross-validated); neuro-decoding does the cross-validated decoding.
+- Consistency needs sessions with the same colour variable in the same units; it compares
+  geometry, not neuron identities.
+- CEBRA's time-contrastive sampling (positive pairs `time_offsets` bins apart) runs over the
+  epoch's bins concatenated: when the epoch has gaps (e.g. running bouts only), a few pairs span a
+  gap and pair bins from different laps. With 10-bin offsets and bouts of seconds this is a small
+  fraction of the pairs; use `EPOCH=all` in neuro-align to avoid it.
+- GPFA assumes spike counts (it is skipped for calcium data) and is slow above ~200 neurons,
+  hence off by default and capped; its latents are only comparable within a session.
+- On IBL data CEBRA embeddings decode the wheel about as well as a linear decoder and the choice
+  near chance ([Andre et al. 2026, BrainWideBench](https://doi.org/10.48550/arXiv.2609.22064)): CEBRA is this app's showpiece
+  for hippocampal position and cross-session consistency, not a better decoder; neuro-decoding
+  reports kNN on CEBRA only as a comparison.
+- The CPU variant trains fewer iterations; check the loss curve before comparing numbers between
+  the variants.
+
+## Licences
+
+Apache-2.0 (our code). CEBRA ≥ 0.4 is Apache-2.0, but **EPFL holds patent WO2023143843A1 on the
+method**; CEBRA's licence says non-academic users should contact EPFL's Technology Transfer Office
+(see `THIRD_PARTY.md`). Everything else bundled is BSD/MIT/Apache; the gpu image contains NVIDIA's
+redistributable CUDA libraries.
+
+## Citations
+
+Please cite these works if you use this app. Verified on Crossref/DataCite and PubMed; full
+author lists in `CITATION.cff`.
+
+- Schneider S, Lee JH, Mathis MW. Learnable latent embeddings for joint behavioural and neural
+  analysis. *Nature* 617:360–368 (2023). doi:[10.1038/s41586-023-06031-6](https://doi.org/10.1038/s41586-023-06031-6), PMID: 37138088. (CEBRA)
+- Yu BM, Cunningham JP, Santhanam G, Ryu SI, Shenoy KV, Sahani M. Gaussian-Process Factor Analysis
+  for Low-Dimensional Single-Trial Analysis of Neural Population Activity. *Journal of
+  Neurophysiology* 102:614–635 (2009). doi:[10.1152/jn.90941.2008](https://doi.org/10.1152/jn.90941.2008), PMID: 19357332. (GPFA)
+- Elephant, the Electrophysiology Analysis Toolkit (Denker M, Kern M, Köhler C, Jos HA; Zenodo,
+  version 1.2.1). doi:[10.5281/zenodo.1186602](https://doi.org/10.5281/zenodo.1186602); RRID:SCR_003833.
+- Denker M, Yegenoglu A, Grün S. Collaborative HPC-enabled workflows on the HBP Collaboratory using
+  the Elephant framework. Neuroinformatics 2018, P19. doi:[10.12751/incf.ni2018.0019](https://doi.org/10.12751/incf.ni2018.0019). (Elephant's citation request)
+- Garcia S et al. Neo: an object model for handling electrophysiology data in multiple formats.
+  *Frontiers in Neuroinformatics* 8:10 (2014). doi:[10.3389/fninf.2014.00010](https://doi.org/10.3389/fninf.2014.00010), PMID: 24600386.
+- Paszke A et al. PyTorch: An Imperative Style, High-Performance Deep Learning Library (2019).
+  doi:[10.48550/arXiv.1912.01703](https://doi.org/10.48550/arXiv.1912.01703).
+- Andre A, Mahato SP, Arora V, et al. BrainWideBench: Benchmarking large-scale pretraining and
+  across-animal transfer in multi-region neural recordings. arXiv (2026). doi:[10.48550/arXiv.2609.22064](https://doi.org/10.48550/arXiv.2609.22064).
+- scikit-learn (Pedregosa et al., *JMLR* 12:2825–2830, 2011; no DOI): https://scikit-learn.org.
+  plotly.py: https://github.com/plotly/plotly.py.
+- Demo data: Grosmark AD, Buzsáki G. Diversity in neural firing dynamics supports both rigid and
+  learned hippocampal sequences. *Science* 351:1440–1443 (2016). doi:[10.1126/science.aad1935](https://doi.org/10.1126/science.aad1935), PMID: 27013730;
+  dataset DANDI:000044, doi:[10.48324/dandi.000044/0.261106.0236](https://doi.org/10.48324/dandi.000044/0.261106.0236).
+- Demo data: International Brain Laboratory et al. A brain-wide map of neural activity during
+  complex behaviour. *Nature* 645:177–191 (2025). doi:[10.1038/s41586-025-09235-0](https://doi.org/10.1038/s41586-025-09235-0), PMID: 40903598;
+  dataset DANDI:000409 (IBL - Brain Wide Map), doi:[10.48324/dandi.000409/0.260309.1324](https://doi.org/10.48324/dandi.000409/0.260309.1324).
+
+## Acknowledgements
+
+CEBRA is developed by the Mathis Laboratory of Adaptive Intelligence at EPFL; Elephant and Neo by
+the NeuralEnsemble community with support from the EU Human Brain Project / EBRAINS; scikit-learn,
+PyTorch and plotly by their open-source communities. The demo data come from the Buzsáki lab (NYU,
+CRCNS hc-11 / DANDI:000044) and the International Brain Laboratory (DANDI:000409), served by the
+DANDI Archive, in the Neurodata Without Borders (NWB) format.
