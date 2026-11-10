@@ -57,6 +57,7 @@ DEFAULTS = {
     "USE_GPU": "auto",
 }
 PARAMETERS = tuple(DEFAULTS)
+CEBRA_GAP = {"offset10-model": 10, "offset5-model": 5, "offset1-model": 1, "offset10-model-mse": 10, "offset36-model": 36}
 ARCHS = ("offset10-model", "offset5-model", "offset1-model", "offset10-model-mse", "offset36-model")
 CITATIONS = ["10.1038/s41586-023-06031-6", "10.1152/jn.90941.2008", "10.5281/zenodo.1186602"]
 
@@ -277,13 +278,20 @@ def run_session(s, p, cfg, out_dir: Path, A, M, F, hb) -> dict:
         vidx = np.flatnonzero(valid)
         if vidx.size < 3 * p["CEBRA_BATCH"]:
             log.warning("%s: %d valid bins for batch size %d", sid, vidx.size, p["CEBRA_BATCH"])
+        # all three CEBRA models train on the first TRAIN_FRACTION of the epoch's bins; the rest is
+        # held out for the goodness of fit and the kNN check, after a gap of the model's receptive
+        # field (10 bins for offset10-model) so no training window overlaps a held-out one
         n_train = int(p["TRAIN_FRACTION"] * vidx.size)
-        tr, te = vidx[:n_train], vidx[n_train:]
+        gap = CEBRA_GAP.get(p["CEBRA_ARCH"], 10)
+        tr, te = vidx[:n_train], vidx[n_train + gap:]
         train_mask = np.zeros(s.t.size, bool)
         train_mask[tr] = True
+        heldout_mask = np.zeros(s.t.size, bool)
+        heldout_mask[te] = True
+        arrays["cebra_heldout_mask"] = heldout_mask
         rng = np.random.default_rng(p["SEED"])
         nb = 100
-        time_fit = M.fit_cebra(Xc[valid], None, cfg, f"{sid} CEBRA-Time", hb)
+        time_fit = M.fit_cebra(Xc[tr], None, cfg, f"{sid} CEBRA-Time", hb)
         emb_time = time_fit["model"].transform(Xc).astype(np.float32)
         arrays["cebra_time"] = emb_time
         ts = M.cebra_scores(time_fit["model"], Xc[te], None, nb)
@@ -302,13 +310,13 @@ def run_session(s, p, cfg, out_dir: Path, A, M, F, hb) -> dict:
             arrays["label_names"] = np.array(lab["names"] + (["moving_up", "moving_down"] if direction is not None else []))
             beh = M.fit_cebra(Xc[tr], L[tr], cfg, f"{sid} CEBRA-Behavior", hb)
             emb_beh = beh["model"].transform(Xc).astype(np.float32)
-            Lsh = L[valid][rng.permutation(vidx.size)]
-            shuf = M.fit_cebra(Xc[valid], Lsh, cfg, f"{sid} CEBRA-Behavior, shuffled labels", hb)
+            Lsh = L[tr][rng.permutation(tr.size)]
+            shuf = M.fit_cebra(Xc[tr], Lsh, cfg, f"{sid} CEBRA-Behavior, shuffled labels", hb)
             emb_shuf = shuf["model"].transform(Xc).astype(np.float32)
             arrays.update(cebra_behavior=emb_beh, cebra_behavior_train_mask=train_mask, cebra_shuffled=emb_shuf)
             bs = M.cebra_scores(beh["model"], Xc[te], L[te], nb)
             ss = M.cebra_scores(shuf["model"], Xc[te], L[te], nb)
-            shuf_train = M.cebra_scores(shuf["model"], Xc[valid], Lsh, nb)
+            shuf_train = M.cebra_scores(shuf["model"], Xc[tr], Lsh, nb)
             ytr, yte = lab["Y"][tr, 0], lab["Y"][te, 0]
             knn = {"cebra_behavior": M.knn_r2(emb_beh[tr], ytr, emb_beh[te], yte),
                    "cebra_shuffled": M.knn_r2(emb_shuf[tr], ytr, emb_shuf[te], yte),

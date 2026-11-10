@@ -36,10 +36,11 @@ for trial-based sessions, PCA of the trial-averaged activity per choice × stimu
 (`METHODS=...,gpfa`; off by default because it is slow on hundreds of units) elephant's GPFA on at
 most `GPFA_MAX_NEURONS` neurons, on trials when the session has a trials table, else on
 fixed-length segments of the epoch; CEBRA (`offset10-model`, cosine distance,
-InfoNCE, 3-D output) trained three ways: CEBRA-Time (`conditional="time"`, no labels),
-CEBRA-Behavior (`conditional="time_delta"` with the behaviour variables, trained on the first
-`TRAIN_FRACTION` of the epoch's bins), and CEBRA-Behavior with shuffled labels (the control). The
-held-out bins give the InfoNCE loss, the goodness of fit in bits (CEBRA's
+InfoNCE, 3-D output) trained three ways, each on the first `TRAIN_FRACTION` of the epoch's bins:
+CEBRA-Time (`conditional="time"`, no labels), CEBRA-Behavior (`conditional="time_delta"` with the
+behaviour variables), and CEBRA-Behavior with shuffled labels (the control). The remaining bins,
+after a gap of the model's receptive field (10 bins for `offset10-model`), are held out from all
+three models and give the InfoNCE loss, the goodness of fit in bits (CEBRA's
 `infonce_to_goodness_of_fit`: 0 = chance, log2(batch size) = perfect) and a kNN (cosine, k = 25)
 decoding check of the first variable. With two or more sessions that share that variable, CEBRA's
 `consistency_score` (R² of the best linear map between label-binned embeddings) compares them.
@@ -104,7 +105,7 @@ decoding check of the first variable. With two or more sessions that share that 
 | `CEBRA_ARCH` | `offset10-model` | CEBRA model (receptive field of 10 bins). |
 | `CEBRA_LR` | `0.0003` | Learning rate. |
 | `CEBRA_TEMPERATURE` | `1.0` | InfoNCE temperature. |
-| `TRAIN_FRACTION` | `0.8` | CEBRA-Behavior trains on this first fraction of the epoch; the rest is held out. |
+| `TRAIN_FRACTION` | `0.8` | All CEBRA models train on this first fraction of the epoch; the rest (after a receptive-field gap) is held out. |
 | `MAX_PLOT_POINTS` | `20000` | Bins drawn in the 3-D figures (random, seeded). |
 | `SEED` | `42` | numpy and torch seed. |
 | `THREADS` | `0` | CPU threads; 0 = the container's CPU quota. |
@@ -119,7 +120,8 @@ session that fails is logged and skipped; a failing GPFA is logged and the rest 
 
 - `<session_id>/<session_id>_embeddings.npz`: `t` (bin centres, s, session clock), `epoch_mask`,
   `pca` (bins × `N_COMPONENTS`), `pca_explained_variance_ratio`, `fa` (bins × factors),
-  `cebra_time`, `cebra_behavior`, `cebra_behavior_train_mask` (bins CEBRA-Behavior was trained on),
+  `cebra_time`, `cebra_behavior`, `cebra_behavior_train_mask` (bins the CEBRA models were trained
+  on), `cebra_heldout_mask` (the held-out bins after the gap),
   `cebra_shuffled` (bins × 3 each), `labels`, `label_names`, `behavior`, `behavior_names`, `gpfa`
   (segments × latents × time), `gpfa_segments` (start, stop in s), `gpfa_neuron_ids`,
   `pca_trial_trajectories` (conditions × time × 3), `pca_trial_time`, `pca_trial_conditions`,
@@ -214,6 +216,10 @@ for many sessions, raising `CEBRA_BATCH` to 1024 or 2048 improves the loss estim
   not cross-validated); neuro-decoding does the cross-validated decoding.
 - Consistency needs sessions with the same colour variable in the same units; it compares
   geometry, not neuron identities.
+- CEBRA's time-contrastive sampling (positive pairs `time_offsets` bins apart) runs over the
+  epoch's bins concatenated: when the epoch has gaps (e.g. running bouts only), a few pairs span a
+  gap and pair bins from different laps. With 10-bin offsets and bouts of seconds this is a small
+  fraction of the pairs; use `EPOCH=all` in neuro-align to avoid it.
 - GPFA assumes spike counts (it is skipped for calcium data) and is slow above ~200 neurons,
   hence off by default and capped; its latents are only comparable within a session.
 - On IBL data CEBRA embeddings decode the wheel about as well as a linear decoder and the choice
