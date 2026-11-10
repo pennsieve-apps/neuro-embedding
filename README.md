@@ -173,9 +173,9 @@ settings (CEBRA 3000 iterations, batch 256):
 - **Grosmark & Buzsáki, rat Buddy, linear track** (58 CA1 units, run epoch 10,654 bins of 25 ms;
   the first 8,523 train all three CEBRA models, the last 2,121 after a 10-bin gap are held out;
   CEBRA-Behavior labels: 1-D position + running direction). Goodness of fit on the held-out bins:
-  CEBRA-Behavior **0.63 bits**, shuffled-label control **-0.15 bits**, CEBRA-Time 0.11 bits; kNN
-  decoding of position from the 3-D embedding on the held-out bins: R² **0.49** (CEBRA-Behavior),
-  0.22 (CEBRA-Time), -0.21 (shuffled control), -0.23 (top 3 PCs). (In an earlier version CEBRA-Time
+  CEBRA-Behavior **0.60 bits**, shuffled-label control **-0.14 bits**, CEBRA-Time 0.10 bits; kNN
+  decoding of position from the 3-D embedding on the held-out bins: R² **0.53** (CEBRA-Behavior),
+  0.22 (CEBRA-Time), -0.25 (shuffled control), -0.23 (top 3 PCs). (In an earlier version CEBRA-Time
   and the control were also trained on the held-out bins, which put CEBRA-Time at 0.37 bits and
   0.54; these numbers are the fair ones.) The
   activity is high-dimensional to linear methods (3 PCs: 16 % of the variance; 80 % needs 37 PCs;
