@@ -21,7 +21,12 @@ RUN pip install --no-deps --only-binary=:all: \
 COPY processor/ /processor/processor/
 COPY VERSION /processor/VERSION
 
+# TORCH_DISABLE_NATIVE_JIT: torch 2.14 replaces some CUDA ops (e.g. bmm of outer products, which CEBRA's loss hits)
+# with Triton kernels compiled at first use, which needs a C compiler and the driver's libcuda.so at run time; the
+# slim image has neither, so the GPU run failed with "Failed to find C compiler". With the flag set, torch keeps its
+# built-in CUDA kernels (torch/_native/triton_utils.py register_op_override).
 ENV PYTHONPATH="/processor" \
+    TORCH_DISABLE_NATIVE_JIT=1 \
     PYTHONUNBUFFERED=1 \
     MPLBACKEND=Agg \
     USER=app \
@@ -32,7 +37,8 @@ ENV PYTHONPATH="/processor" \
 # HOME: on Lambda only INPUT_DIR, OUTPUT_DIR, HOME and TMPDIR are writable and /tmp starts empty, so
 # processor/entry.py points matplotlib, numba, torch and XDG caches below $TMPDIR at start-up. No model
 # weights are needed (every model is fitted on the user's data).
-RUN MPLCONFIGDIR=/dev/shm/mpl python -W ignore -c "import matplotlib.pyplot, sklearn, pyarrow, processor.main, cebra, elephant.gpfa, plotly.graph_objects"
+RUN MPLCONFIGDIR=/dev/shm/mpl python -W ignore -c "import matplotlib.pyplot, sklearn, pyarrow, processor.main, cebra, elephant.gpfa, plotly.graph_objects; \
+from torch._native.common_utils import check_native_jit_disabled; assert check_native_jit_disabled()"
 
 # Runs as uid 1000 on ECS and as an arbitrary least-privileged user on Lambda; nothing depends on the uid
 # (getpass finds USER in the environment).
