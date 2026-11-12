@@ -1,5 +1,6 @@
 cff-version: 1.2.0
-message: If you use this app, please cite it and the works it builds on, listed under references.
+message: >-
+  If you use this app, please cite the work it implements (preferred-citation), this release, and Pennsieve (RRID:SCR_021677); the other works it builds on are listed under references.
 type: software
 title: neuro-embedding
 abstract: 'Low-dimensional population embeddings of neural activity aligned with behaviour by neuro-align: PCA and
@@ -22,6 +23,28 @@ keywords:
 - cebra
 - gpfa
 - nwb
+# The work this app implements; the release report's "How to cite" puts it first.
+preferred-citation:
+  type: article
+  title: Learnable latent embeddings for joint behavioural and neural analysis
+  authors:
+  - family-names: Schneider
+    given-names: Steffen
+  - family-names: Lee
+    given-names: Jin Hwa
+  - family-names: Mathis
+    given-names: Mackenzie Weygandt
+  year: 2023
+  journal: Nature
+  volume: '617'
+  issue: '7960'
+  start: '360'
+  end: '368'
+  doi: 10.1038/s41586-023-06031-6
+  identifiers:
+  - type: other
+    value: '37138088'
+    description: PubMed ID
 references:
 - type: article
   title: Learnable latent embeddings for joint behavioural and neural analysis
